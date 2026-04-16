@@ -4,7 +4,11 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+/** En prod GitHub Pages (dépôt projet) : `VITE_BASE=/nom-du-repo/` ; en local : `/` */
+const base = process.env.VITE_BASE ?? "/";
+
 export default defineConfig({
+  base,
   plugins: [
     react(),
     tailwindcss(),
@@ -19,10 +23,9 @@ export default defineConfig({
         background_color: "#0f172a",
         display: "standalone",
         orientation: "any",
-        start_url: "/",
         icons: [
           {
-            src: "/favicon.svg",
+            src: "favicon.svg",
             sizes: "any",
             type: "image/svg+xml",
             purpose: "any",
