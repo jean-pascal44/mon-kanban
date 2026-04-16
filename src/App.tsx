@@ -51,6 +51,8 @@ export default function App() {
   const [dragCardId, setDragCardId] = useState<string | null>(null);
   const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
   const [newCardTitles, setNewCardTitles] = useState<Record<string, string>>({});
+  const [pendingDeleteCard, setPendingDeleteCard] = useState<Card | null>(null);
+  const [pendingDeleteColumn, setPendingDeleteColumn] = useState<Column | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -115,13 +117,26 @@ export default function App() {
     closeColumnModal();
   };
 
-  const deleteColumn = (columnId: string) => {
-    if (!confirm("Supprimer cette colonne et toutes ses cartes ?")) return;
+  const removeColumnById = (columnId: string) => {
     setBoard((b) => ({
       columns: b.columns.filter((c) => c.id !== columnId),
       cards: b.cards.filter((c) => c.columnId !== columnId),
     }));
   };
+
+  const requestDeleteColumn = (col: Column) => {
+    if (columnModal?.mode === "edit" && columnModal.column.id === col.id) {
+      closeColumnModal();
+    }
+    setPendingDeleteColumn(col);
+  };
+
+  const confirmDeleteColumnAction = () => {
+    if (pendingDeleteColumn) removeColumnById(pendingDeleteColumn.id);
+    setPendingDeleteColumn(null);
+  };
+
+  const closeDeleteColumnModal = () => setPendingDeleteColumn(null);
 
   const addCard = (columnId: string) => {
     const title = (newCardTitles[columnId] ?? "").trim();
@@ -143,9 +158,16 @@ export default function App() {
     }));
   };
 
-  const deleteCard = (cardId: string) => {
+  const removeCardById = (cardId: string) => {
     setBoard((b) => ({ ...b, cards: b.cards.filter((c) => c.id !== cardId) }));
   };
+
+  const confirmDeleteCard = () => {
+    if (pendingDeleteCard) removeCardById(pendingDeleteCard.id);
+    setPendingDeleteCard(null);
+  };
+
+  const closeDeleteCardModal = () => setPendingDeleteCard(null);
 
   const moveCardToColumn = useCallback((cardId: string, columnId: string) => {
     setBoard((b) => ({
@@ -243,6 +265,8 @@ export default function App() {
       if (result.theme) setTheme(result.theme);
       setNewCardTitles({});
       setColumnModal(null);
+      setPendingDeleteCard(null);
+      setPendingDeleteColumn(null);
       setDragCardId(null);
       setDraggingColumnId(null);
     } catch {
@@ -259,6 +283,11 @@ export default function App() {
     }
     return map;
   }, [board]);
+
+  const pendingColumnCardCount = useMemo(() => {
+    if (!pendingDeleteColumn) return 0;
+    return board.cards.filter((c) => c.columnId === pendingDeleteColumn.id).length;
+  }, [board, pendingDeleteColumn]);
 
   const shell = "min-h-dvh flex flex-col bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100";
   const headerBar =
@@ -397,7 +426,7 @@ export default function App() {
                       <button
                         type="button"
                         className="rounded p-1 text-slate-500 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950/50 dark:hover:text-red-300"
-                        onClick={() => deleteColumn(col.id)}
+                        onClick={() => requestDeleteColumn(col)}
                         aria-label={`Supprimer ${col.title}`}
                       >
                         ×
@@ -426,7 +455,7 @@ export default function App() {
                           <button
                             type="button"
                             className="text-slate-400 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 text-xs px-1"
-                            onClick={() => deleteCard(card.id)}
+                            onClick={() => setPendingDeleteCard(card)}
                             aria-label="Supprimer la carte"
                           >
                             ×
@@ -474,6 +503,97 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {pendingDeleteColumn && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 dark:bg-black/60"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-column-dialog-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeDeleteColumnModal();
+          }}
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2
+              id="delete-column-dialog-title"
+              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+            >
+              Supprimer la colonne ?
+            </h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+              La colonne{" "}
+              <span className="font-medium text-slate-800 dark:text-slate-200">
+                {pendingDeleteColumn.emoji} {pendingDeleteColumn.title.trim() || "(sans titre)"}
+              </span>{" "}
+              et ses{" "}
+              <span className="font-medium tabular-nums">
+                {pendingColumnCardCount}
+              </span>{" "}
+              carte{pendingColumnCardCount !== 1 ? "s" : ""} seront supprimées définitivement.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                onClick={closeDeleteColumnModal}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+                onClick={confirmDeleteColumnAction}
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingDeleteCard && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 dark:bg-black/60"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-card-dialog-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeDeleteCardModal();
+          }}
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2
+              id="delete-card-dialog-title"
+              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+            >
+              Supprimer la carte ?
+            </h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+              Cette action est définitive.{" "}
+              <span className="font-medium text-slate-800 dark:text-slate-200">
+                « {pendingDeleteCard.title.trim() || "(sans titre)"} »
+              </span>
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                onClick={closeDeleteCardModal}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+                onClick={confirmDeleteCard}
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {columnModal && (
         <div
