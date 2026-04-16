@@ -1,0 +1,53 @@
+/** Palette fixe de 20 couleurs pour les colonnes */
+export const COLUMN_COLOR_PALETTE = [
+  "#ef4444",
+  "#f97316",
+  "#eab308",
+  "#84cc16",
+  "#22c55e",
+  "#14b8a6",
+  "#06b6d4",
+  "#3b82f6",
+  "#6366f1",
+  "#8b5cf6",
+  "#a855f7",
+  "#d946ef",
+  "#ec4899",
+  "#f43f5e",
+  "#78716c",
+  "#64748b",
+  "#475569",
+  "#0f172a",
+  "#fde047",
+  "#fb923c",
+] as const;
+
+/** Emojis proposés dans le sélecteur (clic) */
+export const EMOJI_PICKER = [
+  "📋",
+  "📌",
+  "✅",
+  "❌",
+  "🔥",
+  "⭐",
+  "💡",
+  "📝",
+  "🎯",
+  "⚡",
+  "🔧",
+  "📎",
+  "💬",
+  "🚀",
+  "🏁",
+  "⏳",
+  "📅",
+  "👤",
+  "🔴",
+  "🟡",
+  "🟢",
+  "🔵",
+  "⚠️",
+  "✨",
+] as const;
+
+export const THEME_STORAGE_KEY = "mon-kanban-theme";
