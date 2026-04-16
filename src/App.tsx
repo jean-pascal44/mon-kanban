@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { downloadKanbanBackup, parseKanbanBackup } from "./backup";
 import { COLUMN_COLOR_PALETTE, EMOJI_PICKER, THEME_STORAGE_KEY } from "./constants";
 import { reorderColumns } from "./columnReorder";
 import { loadBoard, saveBoard } from "./storage";
@@ -50,6 +51,7 @@ export default function App() {
   const [dragCardId, setDragCardId] = useState<string | null>(null);
   const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
   const [newCardTitles, setNewCardTitles] = useState<Record<string, string>>({});
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -211,6 +213,43 @@ export default function App() {
     setBoard(emptyBoard());
   };
 
+  const exportBackup = () => {
+    downloadKanbanBackup(board, theme);
+  };
+
+  const openImportPicker = () => {
+    importInputRef.current?.click();
+  };
+
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const result = parseKanbanBackup(text);
+      if (!result.ok) {
+        window.alert(result.error);
+        return;
+      }
+      if (
+        !window.confirm(
+          "Remplacer le tableau et éventuellement le thème par le contenu de ce fichier ?",
+        )
+      ) {
+        return;
+      }
+      setBoard(result.board);
+      if (result.theme) setTheme(result.theme);
+      setNewCardTitles({});
+      setColumnModal(null);
+      setDragCardId(null);
+      setDraggingColumnId(null);
+    } catch {
+      window.alert("Impossible de lire ce fichier.");
+    }
+  };
+
   const cardsByColumn = useMemo(() => {
     const map = new Map<string, Card[]>();
     for (const c of board.columns) map.set(c.id, []);
@@ -243,7 +282,16 @@ export default function App() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            aria-hidden
+            tabIndex={-1}
+            onChange={onImportFile}
+          />
           <button
             type="button"
             onClick={toggleTheme}
@@ -259,6 +307,22 @@ export default function App() {
             className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white shadow hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400/80"
           >
             + Colonne
+          </button>
+          <button
+            type="button"
+            onClick={exportBackup}
+            className={btnGhost}
+            title="Télécharger une sauvegarde JSON (tableau + thème)"
+          >
+            Exporter
+          </button>
+          <button
+            type="button"
+            onClick={openImportPicker}
+            className={btnGhost}
+            title="Restaurer depuis un fichier JSON exporté précédemment"
+          >
+            Importer
           </button>
           <button type="button" onClick={resetAll} className={btnDangerGhost}>
             Réinitialiser
