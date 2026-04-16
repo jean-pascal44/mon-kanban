@@ -1,4 +1,5 @@
 import type { BoardState, Card, Column } from "./types";
+import { DEFAULT_APP_DESCRIPTION, DEFAULT_APP_TITLE } from "./types";
 
 export const BACKUP_VERSION = 1;
 
@@ -39,7 +40,16 @@ export function validateBoardState(data: unknown): BoardState | null {
     cards.push({ id, columnId, title, body: bodyStr });
   }
 
-  return { columns, cards };
+  const appTitle =
+    typeof data.appTitle === "string" && data.appTitle.trim()
+      ? data.appTitle.trim()
+      : DEFAULT_APP_TITLE;
+  const appDescription =
+    typeof data.appDescription === "string"
+      ? data.appDescription
+      : DEFAULT_APP_DESCRIPTION;
+
+  return { columns, cards, appTitle, appDescription };
 }
 
 export type ParseBackupResult =
@@ -97,9 +107,11 @@ export function downloadKanbanBackup(board: BoardState, theme: "light" | "dark")
   const blob = new Blob([json], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  const day = new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
   a.href = url;
-  a.download = `mon-kanban-export-${day}.json`;
+  a.download = `mon-kanban-export-${stamp}.json`;
   a.rel = "noopener";
   document.body.appendChild(a);
   a.click();

@@ -4,7 +4,11 @@ import { COLUMN_COLOR_PALETTE, EMOJI_PICKER, THEME_STORAGE_KEY } from "./constan
 import { reorderColumns } from "./columnReorder";
 import { loadBoard, saveBoard } from "./storage";
 import type { BoardState, Card, Column } from "./types";
-import { emptyBoard } from "./types";
+import {
+  DEFAULT_APP_DESCRIPTION,
+  DEFAULT_APP_TITLE,
+  emptyBoard,
+} from "./types";
 
 const MIME_CARD = "application/x-kanban-card";
 const MIME_COLUMN = "application/x-kanban-column";
@@ -53,7 +57,17 @@ export default function App() {
   const [newCardTitles, setNewCardTitles] = useState<Record<string, string>>({});
   const [pendingDeleteCard, setPendingDeleteCard] = useState<Card | null>(null);
   const [pendingDeleteColumn, setPendingDeleteColumn] = useState<Column | null>(null);
+  const [pendingReset, setPendingReset] = useState(false);
+  const [headerModalOpen, setHeaderModalOpen] = useState(false);
+  const [headerDraft, setHeaderDraft] = useState({
+    title: DEFAULT_APP_TITLE,
+    description: DEFAULT_APP_DESCRIPTION,
+  });
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
+
+  const isBoardEmpty = board.columns.length === 0;
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -68,8 +82,54 @@ export default function App() {
     saveBoard(board);
   }, [board]);
 
+  useEffect(() => {
+    document.title = board.appTitle || DEFAULT_APP_TITLE;
+  }, [board.appTitle]);
+
+  useEffect(() => {
+    if (isBoardEmpty) setActionsMenuOpen(false);
+  }, [isBoardEmpty]);
+
+  useEffect(() => {
+    if (!actionsMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(e.target as Node)) {
+        setActionsMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setActionsMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [actionsMenuOpen]);
+
   const toggleTheme = () => {
     setTheme((t) => (t === "dark" ? "light" : "dark"));
+  };
+
+  const openHeaderModal = () => {
+    setHeaderDraft({
+      title: board.appTitle,
+      description: board.appDescription,
+    });
+    setHeaderModalOpen(true);
+    setActionsMenuOpen(false);
+  };
+
+  const closeHeaderModal = () => setHeaderModalOpen(false);
+
+  const submitHeaderModal = () => {
+    setBoard((b) => ({
+      ...b,
+      appTitle: headerDraft.title.trim() || DEFAULT_APP_TITLE,
+      appDescription: headerDraft.description,
+    }));
+    setHeaderModalOpen(false);
   };
 
   const openCreateColumn = () => {
@@ -119,6 +179,7 @@ export default function App() {
 
   const removeColumnById = (columnId: string) => {
     setBoard((b) => ({
+      ...b,
       columns: b.columns.filter((c) => c.id !== columnId),
       cards: b.cards.filter((c) => c.columnId !== columnId),
     }));
@@ -230,10 +291,16 @@ export default function App() {
     setDraggingColumnId(null);
   };
 
-  const resetAll = () => {
-    if (!confirm("Effacer tout le tableau (colonnes et cartes) ?")) return;
+  const applyReset = () => {
     setBoard(emptyBoard());
   };
+
+  const confirmReset = () => {
+    applyReset();
+    setPendingReset(false);
+  };
+
+  const closeResetModal = () => setPendingReset(false);
 
   const exportBackup = () => {
     downloadKanbanBackup(board, theme);
@@ -267,6 +334,8 @@ export default function App() {
       setColumnModal(null);
       setPendingDeleteCard(null);
       setPendingDeleteColumn(null);
+      setPendingReset(false);
+      setHeaderModalOpen(false);
       setDragCardId(null);
       setDraggingColumnId(null);
     } catch {
@@ -295,23 +364,22 @@ export default function App() {
   const muted = "text-slate-500 dark:text-slate-400";
   const btnGhost =
     "rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800";
-  const btnDangerGhost = btnGhost;
 
   return (
     <div className={shell}>
       <header className={`${headerBar} px-4 py-3 flex flex-wrap items-center justify-between gap-3`}>
-        <div className="flex items-center gap-2">
-          <span className="text-2xl" aria-hidden>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="text-2xl shrink-0" aria-hidden>
             📋
           </span>
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight">Mon Kanban</h1>
-            <p className={`text-xs ${muted}`}>
-              Colonnes et couleurs personnalisées · données locales
-            </p>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg font-semibold tracking-tight truncate">
+              {board.appTitle}
+            </h1>
+            <p className={`text-xs ${muted} line-clamp-2`}>{board.appDescription}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex shrink-0 items-center justify-end gap-2">
           <input
             ref={importInputRef}
             type="file"
@@ -321,58 +389,207 @@ export default function App() {
             tabIndex={-1}
             onChange={onImportFile}
           />
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="rounded-lg border border-slate-300 p-2 text-lg leading-none hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-800"
-            title={theme === "dark" ? "Passer en mode clair" : "Passer en mode sombre"}
-            aria-label={theme === "dark" ? "Mode clair" : "Mode sombre"}
-          >
-            {theme === "dark" ? "☀️" : "🌙"}
-          </button>
-          <button
-            type="button"
-            onClick={openCreateColumn}
-            className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white shadow hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400/80"
-          >
-            + Colonne
-          </button>
-          <button
-            type="button"
-            onClick={exportBackup}
-            className={btnGhost}
-            title="Télécharger une sauvegarde JSON (tableau + thème)"
-          >
-            Exporter
-          </button>
-          <button
-            type="button"
-            onClick={openImportPicker}
-            className={btnGhost}
-            title="Restaurer depuis un fichier JSON exporté précédemment"
-          >
-            Importer
-          </button>
-          <button type="button" onClick={resetAll} className={btnDangerGhost}>
-            Réinitialiser
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="box-border grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-slate-300 p-0 text-base hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-800"
+              title={theme === "dark" ? "Passer en mode clair" : "Passer en mode sombre"}
+              aria-label={theme === "dark" ? "Mode clair" : "Mode sombre"}
+            >
+              {theme === "dark" ? "☀️" : "🌙"}
+            </button>
+          {isBoardEmpty ? (
+            <>
+              <button
+                type="button"
+                onClick={openImportPicker}
+                className={btnGhost}
+                title="Restaurer depuis un fichier JSON exporté précédemment"
+              >
+                Importer
+              </button>
+              <button
+                type="button"
+                onClick={openCreateColumn}
+                className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white shadow hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400/80"
+              >
+                + Colonne
+              </button>
+            </>
+          ) : (
+            <div className="relative" ref={actionsMenuRef}>
+              <button
+                type="button"
+                id="actions-menu-trigger"
+                aria-haspopup="menu"
+                aria-expanded={actionsMenuOpen}
+                aria-controls="actions-menu"
+                onClick={() => setActionsMenuOpen((o) => !o)}
+                className="box-border grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-slate-300 p-0 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                title="Actions"
+                aria-label="Ouvrir le menu des actions"
+              >
+                <span className="flex flex-col gap-1 leading-none" aria-hidden>
+                  <span className="block h-0.5 w-5 rounded-full bg-current" />
+                  <span className="block h-0.5 w-5 rounded-full bg-current" />
+                  <span className="block h-0.5 w-5 rounded-full bg-current" />
+                </span>
+              </button>
+              {actionsMenuOpen && (
+                <div
+                  id="actions-menu"
+                  role="menu"
+                  aria-labelledby="actions-menu-trigger"
+                  className="absolute right-0 top-full z-[70] mt-2 min-w-[13.5rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800"
+                    onClick={() => {
+                      openCreateColumn();
+                      setActionsMenuOpen(false);
+                    }}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      className="h-5 w-5 shrink-0 text-indigo-600 dark:text-indigo-400"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 4.5v15m7.5-7.5h-15"
+                      />
+                    </svg>
+                    Colonne
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800"
+                    onClick={() => {
+                      openHeaderModal();
+                    }}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                      />
+                    </svg>
+                    Titre et description
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800"
+                    onClick={() => {
+                      exportBackup();
+                      setActionsMenuOpen(false);
+                    }}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                      />
+                    </svg>
+                    Exporter
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800"
+                    onClick={() => {
+                      openImportPicker();
+                      setActionsMenuOpen(false);
+                    }}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+                      />
+                    </svg>
+                    Importer
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                    onClick={() => {
+                      setActionsMenuOpen(false);
+                      setPendingReset(true);
+                    }}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      className="h-5 w-5 shrink-0 opacity-90"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968 3.99c.428 1.022 1.048 2.062 1.048 3.22 0 1.194-.64 2.114-1.48 2.814-.84.7-1.84 1.16-2.92 1.16H8.64c-1.08 0-2.08-.46-2.92-1.16-.84-.7-1.48-1.624-1.48-2.814 0-1.158.62-2.198 1.048-3.22M12 4.5v9.75"
+                      />
+                    </svg>
+                    Réinitialiser
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          </div>
         </div>
       </header>
 
       <main className="flex-1 overflow-x-auto p-4">
         {board.columns.length === 0 ? (
           <div className="mx-auto max-w-md rounded-2xl border border-dashed border-slate-300 bg-white/60 p-10 text-center dark:border-slate-700 dark:bg-slate-900/40">
-            <p className="text-slate-700 mb-2 dark:text-slate-300">Aucune colonne pour l’instant.</p>
-            <p className={`text-sm mb-6 ${muted}`}>
-              Ajoutez un état (ex. « À faire », « En cours »), choisissez une couleur et un emoji.
+            <p className="text-slate-700 mb-3 dark:text-slate-300">Aucune colonne pour l’instant.</p>
+            <p className={`text-sm leading-relaxed ${muted}`}>
+              Pour commencer, utilisez le bouton{" "}
+              <span className="font-semibold text-slate-700 dark:text-slate-200">« + Colonne »</span>{" "}
+              dans la barre en haut à droite. Vous pourrez nommer chaque état (ex. « À faire », « En cours »),
+              choisir une couleur et un emoji.
             </p>
-            <button
-              type="button"
-              onClick={openCreateColumn}
-              className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-500"
-            >
-              Créer une colonne
-            </button>
           </div>
         ) : (
           <div className="flex gap-4 min-h-[calc(100dvh-8rem)] items-start">
@@ -504,6 +721,46 @@ export default function App() {
         )}
       </main>
 
+      {pendingReset && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4 dark:bg-black/60"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-dialog-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeResetModal();
+          }}
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2
+              id="reset-dialog-title"
+              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+            >
+              Réinitialiser le tableau ?
+            </h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+              Toutes les colonnes et toutes les cartes seront supprimées. Cette action est définitive.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                onClick={closeResetModal}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+                onClick={confirmReset}
+              >
+                Réinitialiser
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {pendingDeleteColumn && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 dark:bg-black/60"
@@ -589,6 +846,70 @@ export default function App() {
                 onClick={confirmDeleteCard}
               >
                 Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {headerModalOpen && (
+        <div
+          className="fixed inset-0 z-[55] flex items-center justify-center bg-black/40 p-4 dark:bg-black/60"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="header-dialog-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeHeaderModal();
+          }}
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2
+              id="header-dialog-title"
+              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+            >
+              Titre et description
+            </h2>
+            <p className={`mt-1 text-sm ${muted}`}>
+              Affichés dans l’en-tête ; inclus dans l’export JSON.
+            </p>
+            <div className="mt-4 space-y-3">
+              <label className="block text-sm text-slate-600 dark:text-slate-400">
+                Titre
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  value={headerDraft.title}
+                  onChange={(e) =>
+                    setHeaderDraft((d) => ({ ...d, title: e.target.value }))
+                  }
+                  autoFocus
+                />
+              </label>
+              <label className="block text-sm text-slate-600 dark:text-slate-400">
+                Description
+                <textarea
+                  className="mt-1 w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  rows={3}
+                  value={headerDraft.description}
+                  onChange={(e) =>
+                    setHeaderDraft((d) => ({ ...d, description: e.target.value }))
+                  }
+                />
+              </label>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                onClick={closeHeaderModal}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+                onClick={submitHeaderModal}
+              >
+                Enregistrer
               </button>
             </div>
           </div>
